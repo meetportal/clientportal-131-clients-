@@ -437,6 +437,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .at-summary-card-label {
@@ -445,6 +446,9 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--at-text-soft);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .at-summary-card-value {
@@ -452,6 +456,9 @@ body {
   font-weight: 600;
   color: var(--at-text);
   letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════

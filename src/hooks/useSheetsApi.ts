@@ -324,10 +324,165 @@ export function useSheetsApi() {
     [getToken]
   );
 
+  /**
+   * Creates a Google Sheet with a list of custom worksheets and populates each worksheet with data.
+   */
+  const createSheetFromImport = useCallback(
+    async (
+      name: string,
+      importedSheets: {
+        name: string;
+        data: string[][];
+        cols?: { hidden?: boolean }[];
+        rows?: { hidden?: boolean }[];
+      }[]
+    ): Promise<CreatedSheet> => {
+      setLoading(true);
+      try {
+        const token = await getToken();
+
+        // 1. Create spreadsheet with custom sheet names
+        const createRes = await fetch(SHEETS_BASE, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            properties: { title: name },
+            sheets: importedSheets.map((s, idx) => ({
+              properties: { title: s.name, index: idx },
+            })),
+          }),
+        });
+
+        if (!createRes.ok) {
+          const err = await createRes.json();
+          throw new Error(err?.error?.message ?? "Failed to create sheet");
+        }
+
+        const created = await createRes.json();
+        const spreadsheetId: string = created.spreadsheetId;
+        const tabs: SheetTab[] = created.sheets.map(
+          (s: { properties: { sheetId: number; title: string; index: number; hidden?: boolean } }) => ({
+            sheetId: s.properties.sheetId,
+            title: s.properties.title,
+            hidden: s.properties.hidden ?? false,
+            index: s.properties.index,
+          })
+        );
+
+        // 2. Batch update values for each sheet
+        const data = importedSheets.map((s) => ({
+          range: `'${s.name.replace(/'/g, "''")}'!A1`,
+          values: s.data,
+        }));
+
+        const dataRes = await fetch(
+          `${SHEETS_BASE}/${spreadsheetId}/values:batchUpdate`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              valueInputOption: "USER_ENTERED",
+              data,
+            }),
+          }
+        );
+
+        if (!dataRes.ok) {
+          const err = await dataRes.json();
+          throw new Error(err?.error?.message ?? "Failed to populate sheet data");
+        }
+
+        // 3. Batch update dimension properties to hide rows/columns
+        const visibilityRequests: any[] = [];
+        importedSheets.forEach((s, idx) => {
+          const sheetId = tabs[idx].sheetId;
+
+          // Columns
+          s.cols?.forEach((col, colIdx) => {
+            if (col?.hidden) {
+              visibilityRequests.push({
+                updateDimensionProperties: {
+                  range: {
+                    sheetId,
+                    dimension: "COLUMNS",
+                    startIndex: colIdx,
+                    endIndex: colIdx + 1,
+                  },
+                  properties: {
+                    hiddenByUser: true,
+                  },
+                  fields: "hiddenByUser",
+                },
+              });
+            }
+          });
+
+          // Rows
+          s.rows?.forEach((row, rowIdx) => {
+            if (row?.hidden) {
+              visibilityRequests.push({
+                updateDimensionProperties: {
+                  range: {
+                    sheetId,
+                    dimension: "ROWS",
+                    startIndex: rowIdx,
+                    endIndex: rowIdx + 1,
+                  },
+                  properties: {
+                    hiddenByUser: true,
+                  },
+                  fields: "hiddenByUser",
+                },
+              });
+            }
+          });
+        });
+
+        if (visibilityRequests.length > 0) {
+          const visRes = await fetch(
+            `${SHEETS_BASE}/${spreadsheetId}:batchUpdate`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ requests: visibilityRequests }),
+            }
+          );
+
+          if (!visRes.ok) {
+            const err = await visRes.json();
+            console.warn("Failed to apply row/column visibility to Google Sheets:", err);
+          }
+        }
+
+        setState((s) => ({ ...s, isLoading: false }));
+        return {
+          spreadsheetId,
+          spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+          tabs,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        throw err;
+      }
+    },
+    [getToken]
+  );
+
   return {
     ...state,
     signIn,
     createSheet,
+    createSheetFromImport,
     hideTabs,
     shareSheet,
   };

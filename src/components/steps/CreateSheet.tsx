@@ -1,14 +1,17 @@
 "use client";
 
 import React, { useState } from "react";
-import { Table, Sparkles, CheckCircle2, ExternalLink, ArrowRight } from "lucide-react";
+import { Table, Sparkles, CheckCircle2, ExternalLink, ArrowRight, Upload, FileSpreadsheet } from "lucide-react";
 import { CreatedSheet } from "@/hooks/useSheetsApi";
+import * as XLSX from "xlsx";
+import { ImportedSheet } from "../SpreadsheetGrid";
 
 interface CreateSheetProps {
   onCreated: (sheet: CreatedSheet, sheetName: string) => void;
   createSheet: (name: string, rows: string[][]) => Promise<CreatedSheet>;
   isLoading: boolean;
   onToast: (type: "success" | "error" | "info", title: string, desc?: string) => void;
+  onImportExcel?: (sheets: ImportedSheet[], fileName: string) => void;
 }
 
 const SAMPLE_DATA = [
@@ -32,12 +35,49 @@ export function CreateSheet({
   createSheet,
   isLoading,
   onToast,
+  onImportExcel,
 }: CreateSheetProps) {
   const [sheetName, setSheetName] = useState("My Sheet");
   const [tableData, setTableData] = useState<string[][]>(SAMPLE_DATA);
   const [usingSample, setUsingSample] = useState(true);
   const [created, setCreated] = useState<CreatedSheet | null>(null);
   const [createdName, setCreatedName] = useState("");
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const data = evt.target?.result;
+        const workbook = XLSX.read(data, { type: "array" });
+        const parsedSheets = workbook.SheetNames.map((name) => {
+          const sheet = workbook.Sheets[name];
+          const rawRows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "" });
+          const grid = rawRows.map((row) =>
+            row.map((val) => ({
+              value: String(val ?? ""),
+              style: {},
+            }))
+          );
+          if (grid.length === 0) {
+            grid.push([{ value: "", style: {} }]);
+          }
+          return { name, data: grid };
+        });
+
+        if (parsedSheets.length > 0 && onImportExcel) {
+          onImportExcel(parsedSheets, file.name.replace(/\.[^/.]+$/, ""));
+          onToast("success", "Spreadsheet imported!", `${file.name} loaded successfully.`);
+        }
+      } catch (err) {
+        onToast("error", "Failed to parse file", "Please verify it is a valid spreadsheet.");
+        console.error(err);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
 
   const handleUseSample = () => {
     setTableData(SAMPLE_DATA);
@@ -214,6 +254,50 @@ export function CreateSheet({
           </>
         )}
       </button>
+
+      {onImportExcel && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "12px", borderTop: "1px solid var(--at-border-light)", paddingTop: "15px" }}>
+          <label className="field-label" style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: 0 }}>
+            <Upload size={13} color="var(--at-accent)" />
+            Or Import Excel / CSV
+          </label>
+          <div
+            style={{
+              border: "1.5px dashed var(--at-border)",
+              borderRadius: "var(--radius-md)",
+              padding: "16px 12px",
+              textAlign: "center",
+              cursor: "pointer",
+              background: "var(--at-surface-2)",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "var(--at-accent)";
+              e.currentTarget.style.background = "var(--at-accent-light)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "var(--at-border)";
+              e.currentTarget.style.background = "var(--at-surface-2)";
+            }}
+            onClick={() => document.getElementById("excel-file-upload")?.click()}
+          >
+            <FileSpreadsheet size={22} color="var(--at-text-soft)" style={{ marginBottom: "6px", marginLeft: "auto", marginRight: "auto" }} />
+            <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--at-text)" }}>
+              Upload local sheet file
+            </p>
+            <p style={{ fontSize: "10.5px", color: "var(--at-text-soft)", marginTop: "2px" }}>
+              Supports .xlsx, .xls, .csv, .tsv
+            </p>
+            <input
+              id="excel-file-upload"
+              type="file"
+              accept=".xlsx, .xls, .csv, .tsv"
+              style={{ display: "none" }}
+              onChange={handleFileUpload}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
