@@ -403,7 +403,7 @@ export function useSheetsApi() {
         }
 
         // 3. Batch update dimension properties to hide rows/columns
-        const visibilityRequests: any[] = [];
+        const visibilityRequests: Record<string, unknown>[] = [];
         importedSheets.forEach((s, idx) => {
           const sheetId = tabs[idx].sheetId;
 

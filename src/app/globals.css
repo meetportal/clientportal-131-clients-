@@ -1097,3 +1097,579 @@ body {
   from { transform: translateY(16px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* ==========================================================================
+   TRIGGERS CONSOLE STYLING (Premium Dark Console)
+   ========================================================================== */
+.tg-console {
+  border-top: 1px solid #334155;
+  background: #0f172a; /* Slate 900 */
+  display: flex;
+  flex-direction: column;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin-top: auto;
+}
+
+.tg-console--open {
+  height: 350px;
+  min-height: 350px;
+}
+
+.tg-console--closed {
+  height: 40px;
+  min-height: 40px;
+}
+
+.tg-header {
+  height: 40px;
+  background: #1e293b; /* Slate 800 */
+  border-bottom: 1px solid #334155;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.tg-header:hover {
+  background: #1e293bfa;
+}
+
+.tg-badge {
+  background: #334155;
+  color: #e2e8f0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.tg-db-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.tg-db-indicator--local_json_file {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.tg-db-indicator--upstash_redis {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.tg-db-indicator--vercel_postgres {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.tg-db-indicator--in_memory {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.tg-tab-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tg-tab-btn:hover {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tg-tab-btn--active {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.tg-header-divider {
+  width: 1px;
+  height: 16px;
+  background: #334155;
+  margin: 0 4px;
+}
+
+.tg-icon-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tg-icon-btn:hover {
+  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tg-icon-btn--danger:hover {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.tg-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.tg-tab-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px;
+}
+
+.tg-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.tg-input-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 320px;
+}
+
+.tg-search-icon {
+  position: absolute;
+  left: 8px;
+  color: #64748b;
+  pointer-events: none;
+}
+
+.tg-input-search input {
+  width: 100%;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 5px 8px 5px 28px;
+  font-size: 12px;
+  color: #f1f5f9;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.tg-input-search input:focus {
+  border-color: #38bdf8;
+}
+
+.tg-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.tg-filter-icon {
+  position: absolute;
+  left: 8px;
+  color: #64748b;
+  pointer-events: none;
+}
+
+.tg-select-wrapper select {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 5px 24px 5px 26px;
+  font-size: 12px;
+  color: #f1f5f9;
+  outline: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.tg-select-wrapper::after {
+  content: "▾";
+  position: absolute;
+  right: 8px;
+  font-size: 10px;
+  color: #64748b;
+  pointer-events: none;
+}
+
+.tg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #38bdf8;
+  color: #0f172a;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tg-btn:hover:not(:disabled) {
+  background: #0ea5e9;
+}
+
+.tg-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tg-btn--secondary {
+  background: #334155;
+  color: #f1f5f9;
+}
+
+.tg-btn--secondary:hover:not(:disabled) {
+  background: #475569;
+}
+
+.tg-btn--danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.tg-btn--danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.tg-table-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  background: #020617;
+}
+
+.tg-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px;
+  color: #64748b;
+  font-size: 12px;
+  text-align: center;
+  height: 100%;
+}
+
+.tg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  text-align: left;
+}
+
+.tg-table th {
+  background: #0f172a;
+  color: #94a3b8;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-bottom: 1px solid #334155;
+  position: sticky;
+  top: 0;
+}
+
+.tg-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1e293b;
+  color: #cbd5e1;
+}
+
+.tg-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tg-row--success {
+  background: rgba(34, 197, 94, 0.02);
+}
+
+.tg-row--warning {
+  background: rgba(245, 158, 11, 0.03);
+}
+
+.tg-row--warning td {
+  color: #fde047;
+}
+
+.tg-row--info {
+  background: rgba(148, 163, 184, 0.02);
+}
+
+.tg-td-time {
+  color: #64748b;
+  width: 90px;
+}
+
+.tg-td-sheet {
+  color: #a78bfa;
+  font-weight: 500;
+  width: 80px;
+}
+
+.tg-td-details {
+  word-break: break-all;
+}
+
+.tg-event-badge {
+  display: inline-block;
+  font-size: 9px;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+}
+
+.tg-event-badge--cell_changed {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.tg-event-badge--row_added {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+.tg-event-badge--manual_edit {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.tg-event-badge--system {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+}
+
+.tg-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.tg-status-indicator--success {
+  color: #4ade80;
+}
+
+.tg-status-indicator--warning {
+  color: #fbbf24;
+}
+
+.tg-status-indicator--info {
+  color: #94a3b8;
+}
+
+.tg-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  height: 100%;
+}
+
+.tg-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #020617;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.tg-card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #f8fafc;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tg-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tg-item {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tg-item--inactive {
+  opacity: 0.5;
+}
+
+.tg-item-desc {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 3px;
+}
+
+.tg-item-action {
+  font-size: 11px;
+  color: #e2e8f0;
+  margin-top: 4px;
+}
+
+.tg-item-action code {
+  background: #1e293b;
+  padding: 1px 4px;
+  border-radius: 2px;
+  color: #38bdf8;
+  font-size: 10px;
+}
+
+.tg-toggle-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.tg-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.tg-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tg-form-group label {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.tg-form-group input, 
+.tg-form-group select {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: #f1f5f9;
+  outline: none;
+}
+
+.tg-form-group input:focus, 
+.tg-form-group select:focus {
+  border-color: #38bdf8;
+}
+
+.tg-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.tg-submit-btn {
+  margin-top: 6px;
+  background: #38bdf8;
+  color: #0f172a;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  padding: 7px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+
+.tg-submit-btn:hover {
+  background: #0ea5e9;
+}
+
+.tg-footer {
+  height: 32px;
+  background: #0f172a;
+  border-top: 1px solid #1e293b;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+/* Custom Scrollbar for console elements */
+.scrollbar-dark::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-dark::-webkit-scrollbar-track {
+  background: #020617;
+}
+
+.scrollbar-dark::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+.scrollbar-dark::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
