@@ -60,6 +60,8 @@ interface FilterToolbarProps {
   onKanbanGroupColChange?: (col: number) => void;
   calendarDateCol?: number;
   onCalendarDateColChange?: (col: number) => void;
+  galleryTitleCol?: number;
+  onGalleryTitleColChange?: (col: number) => void;
 }
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
@@ -370,6 +372,8 @@ export function FilterToolbar({
   onKanbanGroupColChange,
   calendarDateCol,
   onCalendarDateColChange,
+  galleryTitleCol,
+  onGalleryTitleColChange,
 }: FilterToolbarProps) {
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [showSortPanel, setShowSortPanel] = useState(false);
@@ -416,7 +420,7 @@ export function FilterToolbar({
         {/* ── Center: Filter + Sort ─────────────── */}
         <div className="filter-toolbar-section" style={{ position: "relative", display: "flex", gap: 4 }}>
           {/* Filter split button */}
-          <div className="filter-btn-group">
+          <div className={`filter-btn-group${hasFilters ? " filter-btn-group--split" : ""}`}>
             <button
               className={`filter-toolbar-btn${hasFilters ? " filter-toolbar-btn--active" : ""}${showFilterPanel ? " filter-toolbar-btn--open" : ""}`}
               onClick={() => (showFilterPanel ? setShowFilterPanel(false) : openFilter())}
@@ -440,7 +444,7 @@ export function FilterToolbar({
           </div>
 
           {/* Sort split button */}
-          <div className="sort-btn-group">
+          <div className={`sort-btn-group${hasSorts ? " sort-btn-group--split" : ""}`}>
             <button
               className={`filter-toolbar-btn${hasSorts ? " filter-toolbar-btn--active" : ""}${showSortPanel ? " filter-toolbar-btn--open" : ""}`}
               onClick={() => (showSortPanel ? setShowSortPanel(false) : openSort())}
@@ -510,6 +514,24 @@ export function FilterToolbar({
                 className="toolbar-select"
                 value={calendarDateCol}
                 onChange={(e) => onCalendarDateColChange(parseInt(e.target.value, 10))}
+              >
+                {headers.map((h, i) => (
+                  <option key={i} value={i}>{h || `Column ${i + 1}`}</option>
+                ))}
+              </select>
+            </div>
+          </>
+        )}
+
+        {viewType === "gallery" && onGalleryTitleColChange !== undefined && galleryTitleCol !== undefined && (
+          <>
+            <div className="filter-toolbar-divider" />
+            <div className="filter-toolbar-section">
+              <span className="toolbar-select-label">Card Title:</span>
+              <select
+                className="toolbar-select"
+                value={galleryTitleCol}
+                onChange={(e) => onGalleryTitleColChange(parseInt(e.target.value, 10))}
               >
                 {headers.map((h, i) => (
                   <option key={i} value={i}>{h || `Column ${i + 1}`}</option>

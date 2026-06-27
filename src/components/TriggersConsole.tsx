@@ -73,7 +73,7 @@ export function TriggersConsole({
   onTestConnection,
   onSyncDb,
 }: TriggersConsoleProps) {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"logs" | "triggers">("logs");
   
   // Filtering & Search

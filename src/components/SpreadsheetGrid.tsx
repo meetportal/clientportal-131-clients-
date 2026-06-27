@@ -124,7 +124,7 @@ export function SpreadsheetGrid({
   };
 
   const hideSelectedCol = () => {
-    if (!selectedCell) return;
+    if (!selectedCell || selectedCell.col === -1) return;
     const updatedSheets = [...sheets];
     const sheet = { ...updatedSheets[activeSheetIdx] };
     const colCount = sheet.data[0]?.length || 0;
@@ -166,7 +166,7 @@ export function SpreadsheetGrid({
 
   // Sync formula bar input value with selected cell value
   useEffect(() => {
-    if (selectedCell) {
+    if (selectedCell && selectedCell.col !== -1) {
       const cell = gridData[selectedCell.row]?.[selectedCell.col];
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormulaValue(cell?.value ?? "");
@@ -220,7 +220,7 @@ export function SpreadsheetGrid({
   const handleFormulaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setFormulaValue(val);
-    if (selectedCell) {
+    if (selectedCell && selectedCell.col !== -1) {
       updateCellValue(selectedCell.row, selectedCell.col, val);
     }
   };
@@ -260,19 +260,30 @@ export function SpreadsheetGrid({
       r.map((c) => ({ ...c, style: { ...c.style } })),
     );
 
-    if (!sheetData[row]) sheetData[row] = [];
-    if (!sheetData[row][col]) sheetData[row][col] = { value: "", style: {} };
+    const applyToCell = (rIdx: number, cIdx: number) => {
+      if (!sheetData[rIdx]) sheetData[rIdx] = [];
+      if (!sheetData[rIdx][cIdx]) sheetData[rIdx][cIdx] = { value: "", style: {} };
 
-    const style = sheetData[row][col].style || {};
-    if (
-      styleKey === "bold" ||
-      styleKey === "italic" ||
-      styleKey === "underline"
-    ) {
-      style[styleKey] = !style[styleKey];
+      const style = sheetData[rIdx][cIdx].style || {};
+      if (
+        styleKey === "bold" ||
+        styleKey === "italic" ||
+        styleKey === "underline"
+      ) {
+        style[styleKey] = !style[styleKey];
+      }
+      sheetData[rIdx][cIdx].style = style;
+    };
+
+    if (col !== -1) {
+      applyToCell(row, col);
+    } else {
+      const colCount = sheetData[row]?.length || 0;
+      for (let c = 0; c < colCount; c++) {
+        applyToCell(row, c);
+      }
     }
 
-    sheetData[row][col].style = style;
     updatedSheets[activeSheetIdx] = {
       ...updatedSheets[activeSheetIdx],
       data: sheetData,
@@ -288,13 +299,24 @@ export function SpreadsheetGrid({
       r.map((c) => ({ ...c, style: { ...c.style } })),
     );
 
-    if (!sheetData[row]) sheetData[row] = [];
-    if (!sheetData[row][col]) sheetData[row][col] = { value: "", style: {} };
+    const applyToCell = (rIdx: number, cIdx: number) => {
+      if (!sheetData[rIdx]) sheetData[rIdx] = [];
+      if (!sheetData[rIdx][cIdx]) sheetData[rIdx][cIdx] = { value: "", style: {} };
 
-    const style = sheetData[row][col].style || {};
-    style.align = align;
+      const style = sheetData[rIdx][cIdx].style || {};
+      style.align = align;
+      sheetData[rIdx][cIdx].style = style;
+    };
 
-    sheetData[row][col].style = style;
+    if (col !== -1) {
+      applyToCell(row, col);
+    } else {
+      const colCount = sheetData[row]?.length || 0;
+      for (let c = 0; c < colCount; c++) {
+        applyToCell(row, c);
+      }
+    }
+
     updatedSheets[activeSheetIdx] = {
       ...updatedSheets[activeSheetIdx],
       data: sheetData,
@@ -364,6 +386,7 @@ export function SpreadsheetGrid({
   };
 
   const addCol = (right = true) => {
+    if (selectedCell && selectedCell.col === -1) return;
     const updatedSheets = [...sheets];
     const sheet = { ...updatedSheets[activeSheetIdx] };
     const sheetData = sheet.data.map((r) => r.map((c) => ({ ...c })));
@@ -398,7 +421,7 @@ export function SpreadsheetGrid({
   };
 
   const deleteCol = () => {
-    if (!selectedCell) return;
+    if (!selectedCell || selectedCell.col === -1) return;
     const updatedSheets = [...sheets];
     const sheet = { ...updatedSheets[activeSheetIdx] };
     const sheetData = sheet.data.map((r) => r.map((c) => ({ ...c })));
@@ -612,21 +635,23 @@ export function SpreadsheetGrid({
                 <tr key={rowIdx}>
                   {/* Row Header */}
                   <td
+                    onClick={() => onSelectedCellChange({ row: rowIdx, col: -1 })}
                     style={{
                       position: "sticky",
                       left: 0,
                       zIndex: 10,
                       width: "40px",
                       height: "22px",
-                      background: "#f4f4f2",
+                      background: selectedCell?.row === rowIdx ? "#e2e8f0" : "#f4f4f2",
                       borderRight: "1px solid var(--at-border)",
                       borderBottom: "1px solid var(--at-border-light)",
                       fontSize: "10.5px",
-                      fontWeight: 600,
-                      color: "var(--at-text-soft)",
+                      fontWeight: selectedCell?.row === rowIdx ? 700 : 600,
+                      color: selectedCell?.row === rowIdx ? "var(--at-accent)" : "var(--at-text-soft)",
                       textAlign: "center",
                       verticalAlign: "middle",
                       userSelect: "none",
+                      cursor: "pointer",
                     }}
                   >
                     {rowIdx + 1}
@@ -636,7 +661,7 @@ export function SpreadsheetGrid({
                     if (isColHidden(colIdx)) return null;
                     const isSelected =
                       selectedCell?.row === rowIdx &&
-                      selectedCell?.col === colIdx;
+                      (selectedCell?.col === colIdx || selectedCell?.col === -1);
                     const isEditing =
                       inlineEditingCell?.row === rowIdx &&
                       inlineEditingCell?.col === colIdx;
@@ -679,7 +704,7 @@ export function SpreadsheetGrid({
                           verticalAlign: "middle",
                           cursor: "cell",
                           userSelect: "none",
-                          outline: isSelected
+                          outline: isSelected && selectedCell?.col !== -1
                             ? "2px solid var(--at-accent)"
                             : isSearchMatch
                             ? "1px solid #facc15"

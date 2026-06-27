@@ -91,6 +91,7 @@ export function SheetManager() {
   const [searchTerm, setSearchTerm] = useState("");
   const [kanbanGroupCol, setKanbanGroupCol] = useState(0);
   const [calendarDateCol, setCalendarDateCol] = useState(0);
+  const [galleryTitleCol, setGalleryTitleCol] = useState(0);
 
   // Filtered data — computed at component level (hooks must be at top level)
   const activeSheet = importedSheets?.[activeSheetIdx] ?? null;
@@ -710,7 +711,13 @@ export function SheetManager() {
           );
         }
         if (viewType === "gallery") {
-          return <GalleryView filteredData={filteredData} primaryColIndex={0} />;
+          return (
+            <GalleryView 
+              sheet={activeSheet} 
+              filteredData={filteredData} 
+              primaryColIndex={galleryTitleCol} 
+            />
+          );
         }
         if (viewType === "list") {
           return <ListView filteredData={filteredData} />;
@@ -1204,6 +1211,7 @@ export function SheetManager() {
                       setSortRules([]);
                       setSearchTerm("");
                       setViewType("grid");
+                      setGalleryTitleCol(0);
                     }
                   }}
                   className="at-topbar-action-btn at-btn-danger"
@@ -1263,6 +1271,8 @@ export function SheetManager() {
               onKanbanGroupColChange={setKanbanGroupCol}
               calendarDateCol={calendarDateCol}
               onCalendarDateColChange={setCalendarDateCol}
+              galleryTitleCol={galleryTitleCol}
+              onGalleryTitleColChange={setGalleryTitleCol}
             />
           </div>
         )}
