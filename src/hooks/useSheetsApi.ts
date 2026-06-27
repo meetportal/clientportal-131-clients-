@@ -32,7 +32,9 @@ export interface SheetsApiState {
 const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
 const SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
-  "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/drive",
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/gmail.send",
 ].join(" ");
 
 const SHEETS_BASE = "https://sheets.googleapis.com/v4/spreadsheets";
@@ -403,7 +405,7 @@ export function useSheetsApi() {
         }
 
         // 3. Batch update dimension properties to hide rows/columns
-        const visibilityRequests: any[] = [];
+        const visibilityRequests: Record<string, unknown>[] = [];
         importedSheets.forEach((s, idx) => {
           const sheetId = tabs[idx].sheetId;
 
@@ -481,7 +483,217 @@ export function useSheetsApi() {
     },
     [getToken]
   );
+  /** Copy a Google Doc template in Google Drive. Returns new file ID. */
+  const copyTemplateDoc = useCallback(
+    async (templateId: string, name: string): Promise<string> => {
+      setLoading(true);
+      try {
+        const token = await getToken();
+        const res = await fetch(`${DRIVE_BASE}/${templateId}/copy`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name }),
+        });
 
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err?.error?.message ?? "Failed to copy template doc");
+        }
+
+        const data = await res.json();
+        setState((s) => ({ ...s, isLoading: false }));
+        return data.id;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        throw err;
+      }
+    },
+    [getToken]
+  );
+
+  /** Replace placeholder variables in a Google Document. */
+  const replaceDocPlaceholders = useCallback(
+    async (docId: string, replacements: Record<string, string>): Promise<void> => {
+      setLoading(true);
+      try {
+        const token = await getToken();
+        const requests = Object.entries(replacements).map(([key, val]) => ({
+          replaceAllText: {
+            containsText: {
+              text: key,
+              matchCase: true,
+            },
+            replaceText: val,
+          },
+        }));
+
+        const res = await fetch(
+          `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ requests }),
+          }
+        );
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err?.error?.message ?? "Failed to replace doc placeholders");
+        }
+
+        setState((s) => ({ ...s, isLoading: false }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        throw err;
+      }
+    },
+    [getToken]
+  );
+
+  /** Make a Google Drive file readable by anyone with the link and return its sharing URL. */
+  const makeFilePublic = useCallback(
+    async (fileId: string): Promise<string> => {
+      setLoading(true);
+      try {
+        const token = await getToken();
+        
+        // Step 1: Add permissions
+        const permRes = await fetch(`${DRIVE_BASE}/${fileId}/permissions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            role: "reader",
+            type: "anyone",
+          }),
+        });
+
+        if (!permRes.ok) {
+          const err = await permRes.json();
+          throw new Error(err?.error?.message ?? "Failed to share file");
+        }
+
+        // Step 2: Retrieve public webViewLink
+        const getRes = await fetch(`${DRIVE_BASE}/${fileId}?fields=webViewLink`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!getRes.ok) {
+          const err = await getRes.json();
+          throw new Error(err?.error?.message ?? "Failed to get sharing link");
+        }
+
+        const data = await getRes.json();
+        setState((s) => ({ ...s, isLoading: false }));
+        return data.webViewLink;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        throw err;
+      }
+    },
+    [getToken]
+  );
+
+  /** Write a cell value back to a Google Sheet range. */
+  const writeCellToSheet = useCallback(
+    async (spreadsheetId: string, range: string, value: string): Promise<void> => {
+      setLoading(true);
+      try {
+        const token = await getToken();
+        const res = await fetch(
+          `${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              range,
+              majorDimension: "ROWS",
+              values: [[value]],
+            }),
+          }
+        );
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err?.error?.message ?? "Failed to write cell to sheet");
+        }
+
+        setState((s) => ({ ...s, isLoading: false }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        throw err;
+      }
+    },
+    [getToken]
+  );
+
+  /** Send an email client-side via the Gmail API. */
+  const sendGmailMessage = useCallback(
+    async (to: string, subject: string, body: string): Promise<void> => {
+      setLoading(true);
+      try {
+        const token = await getToken();
+        
+        // Construct the RFC 5322 MIME message
+        const utf8Subject = `=?utf-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=`;
+        const emailContent = [
+          `To: ${to}`,
+          "Content-Type: text/plain; charset=UTF-8",
+          "MIME-Version: 1.0",
+          `Subject: ${utf8Subject}`,
+          "",
+          body,
+        ].join("\r\n");
+
+        // Base64url encode the message
+        const base64Safe = btoa(unescape(encodeURIComponent(emailContent)))
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/, "");
+
+        const res = await fetch(
+          "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ raw: base64Safe }),
+          }
+        );
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err?.error?.message ?? "Failed to send email");
+        }
+
+        setState((s) => ({ ...s, isLoading: false }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        throw err;
+      }
+    },
+    [getToken]
+  );
   return {
     ...state,
     signIn,
@@ -489,5 +701,10 @@ export function useSheetsApi() {
     createSheetFromImport,
     hideTabs,
     shareSheet,
+    copyTemplateDoc,
+    replaceDocPlaceholders,
+    makeFilePublic,
+    writeCellToSheet,
+    sendGmailMessage,
   };
 }

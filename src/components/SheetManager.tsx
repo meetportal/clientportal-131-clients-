@@ -7,8 +7,10 @@ import { HideTabs } from "@/components/steps/HideTabs";
 import { ShareSheet } from "@/components/steps/ShareSheet";
 import { ToastContainer, useToast } from "@/components/ui/Toast";
 import { useSheetsApi, CreatedSheet } from "@/hooks/useSheetsApi";
-import { SpreadsheetGrid, ImportedSheet } from "@/components/SpreadsheetGrid";
+import { SpreadsheetGrid, ImportedSheet, getColLabel } from "@/components/SpreadsheetGrid";
 import { CellControlPanel } from "@/components/CellControlPanel";
+import { TriggersConsole, Trigger, LogEntry } from "@/components/TriggersConsole";
+import { CertificateMerge } from "@/components/steps/CertificateMerge";
 import * as XLSX from "xlsx";
 import {
   FileSpreadsheet,
@@ -24,9 +26,10 @@ import {
   Download,
   CloudUpload,
   RefreshCw,
+  Award,
 } from "lucide-react";
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
 
 const STEPS = [
   {
@@ -46,6 +49,12 @@ const STEPS = [
     label: "Share",
     icon: Share2,
     sidebarTitle: "Share Your Sheet",
+  },
+  {
+    id: 4 as Step,
+    label: "Certificates",
+    icon: Award,
+    sidebarTitle: "Certificate Merge",
   },
 ];
 
@@ -76,9 +85,408 @@ export function SheetManager() {
     createSheetFromImport,
     hideTabs,
     shareSheet,
+    copyTemplateDoc,
+    replaceDocPlaceholders,
+    makeFilePublic,
+    writeCellToSheet,
+    sendGmailMessage,
   } = useSheetsApi();
 
-  const reachedStep = createdSheet ? (step >= 3 ? 3 : step) : 1;
+  // Triggers and DB States
+  const [triggers, setTriggers] = useState<Trigger[]>([
+    {
+      id: "t-default-1",
+      name: "Auto Timestamp Product Edit",
+      type: "cell_changed",
+      isActive: true,
+      sheetName: "All",
+      targetColumn: 0, // Column A (usually Product)
+      actionType: "auto_fill",
+      actionColumn: 2, // Column C (Last Modified)
+      actionValueFormula: "{{timestamp}}",
+    },
+    {
+      id: "t-default-2",
+      name: "Log Row Additions",
+      type: "row_added",
+      isActive: true,
+      sheetName: "All",
+      actionType: "log_only",
+    }
+  ]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [dbProvider, setDbProvider] = useState<string>("local_json_file");
+  const [dbDetails, setDbDetails] = useState<string>("Initializing storage connection...");
+  const [isTestingConnection, setIsTestingConnection] = useState<boolean>(false);
+  const isExecutingTriggersRef = React.useRef(false);
+
+  const testDbConnection = async (silent = false) => {
+    if (!silent) setIsTestingConnection(true);
+    try {
+      const res = await fetch("/api/db?test=true");
+      if (res.ok) {
+        const info = await res.json();
+        setDbProvider(info.provider);
+        setDbDetails(info.details);
+        if (!silent) {
+          toast("success", "Connection Successful!", info.details);
+        }
+      } else {
+        throw new Error("Failed to contact database route");
+      }
+    } catch (err) {
+      setDbProvider("in_memory");
+      setDbDetails("Error connecting. Falling back to in-memory temporary storage.");
+      if (!silent) {
+        toast("error", "Connection Failed", "Could not connect to database route.");
+      }
+    } finally {
+      if (!silent) setIsTestingConnection(false);
+    }
+  };
+
+  const saveDbState = async (
+    currentSheets: ImportedSheet[] | null,
+    currentTriggers: Trigger[],
+    currentLogs: LogEntry[]
+  ) => {
+    try {
+      const res = await fetch("/api/db", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sheets: currentSheets || [],
+          triggers: currentTriggers,
+          logs: currentLogs,
+        }),
+      });
+      if (!res.ok) {
+        console.warn("Failed to sync state to database API");
+      }
+    } catch (err) {
+      console.warn("Failed to save state to DB API:", err);
+    }
+  };
+
+  // Load database state on mount
+  React.useEffect(() => {
+    async function loadDbState() {
+      try {
+        const res = await fetch("/api/db");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.sheets && data.sheets.length > 0) {
+            setImportedSheets(data.sheets);
+            setImportedFileName(data.sheets[0]?.name || "Restored Workbook");
+          }
+          if (data.triggers && data.triggers.length > 0) {
+            setTriggers(data.triggers);
+          }
+          if (data.logs) {
+            setLogs(data.logs);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load initial DB state:", err);
+      }
+      
+      testDbConnection(true);
+    }
+    loadDbState();
+  }, []);
+
+  // Triggers Interceptor Logic
+  const handleSheetsChange = (nextSheets: ImportedSheet[] | null) => {
+    if (!nextSheets) {
+      setImportedSheets(null);
+      saveDbState(null, triggers, logs);
+      return;
+    }
+
+    if (isExecutingTriggersRef.current) {
+      setImportedSheets(nextSheets);
+      return;
+    }
+
+    const prevSheets = importedSheets;
+    setImportedSheets(nextSheets);
+
+    if (!prevSheets || prevSheets.length === 0 || nextSheets.length === 0) {
+      saveDbState(nextSheets, triggers, logs);
+      return;
+    }
+
+    const activeSheet = nextSheets[activeSheetIdx];
+    const prevSheet = prevSheets[activeSheetIdx];
+
+    if (!activeSheet || !prevSheet) {
+      saveDbState(nextSheets, triggers, logs);
+      return;
+    }
+
+    let newLogs: LogEntry[] = [...logs];
+    let sheetModified = false;
+    const finalSheets = [...nextSheets];
+
+    isExecutingTriggersRef.current = true;
+
+    try {
+      // 1. Check Row Added Trigger
+      const prevRowCount = prevSheet.data.length;
+      const nextRowCount = activeSheet.data.length;
+
+      if (nextRowCount > prevRowCount) {
+        let detectedAddedRow = -1;
+        for (let r = 0; r < nextRowCount; r++) {
+          if (r >= prevRowCount) {
+            detectedAddedRow = r;
+            break;
+          }
+          const prevRow = prevSheet.data[r];
+          const nextRow = activeSheet.data[r];
+          const isNextEmpty = nextRow.every(c => c.value === "");
+          const isPrevEmpty = prevRow.every(c => c.value === "");
+          if (isNextEmpty && !isPrevEmpty) {
+            detectedAddedRow = r;
+            break;
+          }
+        }
+        if (detectedAddedRow === -1) {
+          detectedAddedRow = nextRowCount - 1;
+        }
+
+        const manualLog: LogEntry = {
+          id: `log-row-${Date.now()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          eventType: "row_added",
+          sheetName: activeSheet.name,
+          details: `Row ${detectedAddedRow + 1} was added.`,
+          status: "info",
+        };
+        newLogs = [manualLog, ...newLogs];
+
+        const activeRowTriggers = triggers.filter(
+          (t) => t.isActive && t.type === "row_added" && (t.sheetName === "All" || t.sheetName === activeSheet.name)
+        );
+
+        activeRowTriggers.forEach((trigger) => {
+          const runLog: LogEntry = {
+            id: `log-tr-${Date.now()}-${Math.random()}`,
+            timestamp: new Date().toLocaleTimeString(),
+            triggerName: trigger.name,
+            eventType: "row_added",
+            sheetName: activeSheet.name,
+            details: `Executing trigger "${trigger.name}".`,
+            status: "success",
+          };
+
+          if (trigger.actionType === "auto_fill" && trigger.actionColumn !== undefined) {
+            const colIdx = trigger.actionColumn;
+            const template = trigger.actionValueFormula || "";
+            const val = template
+              .replace("{{row}}", String(detectedAddedRow + 1))
+              .replace("{{timestamp}}", new Date().toLocaleTimeString());
+
+            const updatedData = finalSheets[activeSheetIdx].data.map((rowArr) => rowArr.map((c) => ({ ...c })));
+            if (updatedData[detectedAddedRow]) {
+              updatedData[detectedAddedRow][colIdx] = {
+                ...updatedData[detectedAddedRow][colIdx],
+                value: val,
+              };
+              finalSheets[activeSheetIdx] = {
+                ...finalSheets[activeSheetIdx],
+                data: updatedData,
+              };
+              sheetModified = true;
+              runLog.details += ` Auto-filled Column ${getColLabel(colIdx)} of Row ${detectedAddedRow + 1} with "${val}".`;
+            }
+          } else {
+            runLog.details += ` Logged event.`;
+          }
+          newLogs = [runLog, ...newLogs];
+        });
+      }
+
+      // 2. Check Cell Changed Trigger
+      else if (nextRowCount === prevRowCount) {
+        const prevColCount = prevSheet.data[0]?.length || 0;
+        const nextColCount = activeSheet.data[0]?.length || 0;
+
+        if (nextColCount === prevColCount) {
+          let changedCell: { row: number; col: number; prevVal: string; newVal: string } | null = null;
+          for (let r = 0; r < nextRowCount; r++) {
+            for (let c = 0; c < nextColCount; c++) {
+              const pVal = prevSheet.data[r][c]?.value ?? "";
+              const nVal = activeSheet.data[r][c]?.value ?? "";
+              if (pVal !== nVal) {
+                changedCell = { row: r, col: c, prevVal: pVal, newVal: nVal };
+                break;
+              }
+            }
+            if (changedCell) break;
+          }
+
+          if (changedCell) {
+            const { row: rIdx, col: cIdx, prevVal, newVal } = changedCell;
+            const cellRef = `${getColLabel(cIdx)}${rIdx + 1}`;
+
+            const editLog: LogEntry = {
+              id: `log-edit-${Date.now()}`,
+              timestamp: new Date().toLocaleTimeString(),
+              eventType: "manual_edit",
+              sheetName: activeSheet.name,
+              details: `Cell ${cellRef} changed from "${prevVal}" to "${newVal}".`,
+              status: "info",
+            };
+            newLogs = [editLog, ...newLogs];
+
+            const activeCellTriggers = triggers.filter(
+              (t) =>
+                t.isActive &&
+                t.type === "cell_changed" &&
+                (t.sheetName === "All" || t.sheetName === activeSheet.name) &&
+                (t.targetColumn === -1 || t.targetColumn === cIdx)
+            );
+
+            activeCellTriggers.forEach((trigger) => {
+              const runLog: LogEntry = {
+                id: `log-tr-${Date.now()}-${Math.random()}`,
+                timestamp: new Date().toLocaleTimeString(),
+                triggerName: trigger.name,
+                eventType: "cell_changed",
+                sheetName: activeSheet.name,
+                details: `Executing trigger "${trigger.name}".`,
+                status: "success",
+              };
+
+              if (trigger.actionType === "auto_fill" && trigger.actionColumn !== undefined) {
+                const colIdx = trigger.actionColumn;
+                
+                if (colIdx === cIdx) {
+                  runLog.status = "warning";
+                  runLog.details += ` Skipping action to prevent feedback loop (target cell matches changed cell).`;
+                  newLogs = [runLog, ...newLogs];
+                  return;
+                }
+
+                const template = trigger.actionValueFormula || "";
+                const val = template
+                  .replace("{{row}}", String(rIdx + 1))
+                  .replace("{{timestamp}}", new Date().toLocaleTimeString())
+                  .replace("{{prev}}", prevVal)
+                  .replace("{{value}}", newVal);
+
+                const updatedData = finalSheets[activeSheetIdx].data.map((rowArr) => rowArr.map((c) => ({ ...c })));
+                if (updatedData[rIdx]) {
+                  updatedData[rIdx][colIdx] = {
+                    ...updatedData[rIdx][colIdx],
+                    value: val,
+                  };
+                  finalSheets[activeSheetIdx] = {
+                    ...finalSheets[activeSheetIdx],
+                    data: updatedData,
+                  };
+                  sheetModified = true;
+                  runLog.details += ` Auto-filled Column ${getColLabel(colIdx)} of Row ${rIdx + 1} with "${val}".`;
+                }
+              } else {
+                runLog.details += ` Logged change.`;
+              }
+              newLogs = [runLog, ...newLogs];
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error executing triggers:", err);
+    } finally {
+      isExecutingTriggersRef.current = false;
+    }
+
+    if (sheetModified) {
+      setImportedSheets(finalSheets);
+    }
+    setLogs(newLogs);
+    saveDbState(sheetModified ? finalSheets : nextSheets, triggers, newLogs);
+  };
+
+  const handleAddTrigger = (newTr: Omit<Trigger, "id">) => {
+    const trigger: Trigger = {
+      ...newTr,
+      id: `trigger-${Date.now()}`,
+    };
+    const updated = [...triggers, trigger];
+    setTriggers(updated);
+    
+    const log: LogEntry = {
+      id: `log-tr-create-${Date.now()}`,
+      timestamp: new Date().toLocaleTimeString(),
+      eventType: "system",
+      sheetName: "System",
+      details: `Trigger rule "${trigger.name}" was created.`,
+      status: "info",
+    };
+    const nextLogs = [log, ...logs];
+    setLogs(nextLogs);
+    saveDbState(importedSheets, updated, nextLogs);
+    toast("success", "Trigger Created", `"${trigger.name}" is now active.`);
+  };
+
+  const handleToggleTrigger = (id: string) => {
+    const updated = triggers.map((t) => {
+      if (t.id === id) {
+        const nextState = !t.isActive;
+        const log: LogEntry = {
+          id: `log-tr-toggle-${Date.now()}`,
+          timestamp: new Date().toLocaleTimeString(),
+          eventType: "system",
+          sheetName: "System",
+          details: `Trigger rule "${t.name}" was ${nextState ? "activated" : "deactivated"}.`,
+          status: "info",
+        };
+        setLogs((prev) => [log, ...prev]);
+        return { ...t, isActive: nextState };
+      }
+      return t;
+    });
+    setTriggers(updated);
+    saveDbState(importedSheets, updated, logs);
+  };
+
+  const handleDeleteTrigger = (id: string) => {
+    const tToDelete = triggers.find((t) => t.id === id);
+    if (!tToDelete) return;
+    const updated = triggers.filter((t) => t.id !== id);
+    setTriggers(updated);
+    
+    const log: LogEntry = {
+      id: `log-tr-del-${Date.now()}`,
+      timestamp: new Date().toLocaleTimeString(),
+      eventType: "system",
+      sheetName: "System",
+      details: `Trigger rule "${tToDelete.name}" was deleted.`,
+      status: "info",
+    };
+    const nextLogs = [log, ...logs];
+    setLogs(nextLogs);
+    saveDbState(importedSheets, updated, nextLogs);
+    toast("success", "Trigger Deleted", `"${tToDelete.name}" was removed.`);
+  };
+
+  const handleClearLogs = () => {
+    setLogs([]);
+    saveDbState(importedSheets, triggers, []);
+    toast("success", "Logs Cleared", "Change log history has been reset.");
+  };
+
+  const handleSyncDb = () => {
+    saveDbState(importedSheets, triggers, logs);
+    toast("success", "Synced", "Manual save triggered. All data pushed to database.");
+  };
+
+  const reachedStep = createdSheet ? (step >= 4 ? 4 : step) : 1;
 
   const handleImportExcel = (sheets: ImportedSheet[], fileName: string) => {
     setImportedSheets(sheets);
@@ -195,7 +603,7 @@ export function SheetManager() {
           selectedCell={selectedCell}
           sheets={importedSheets}
           activeSheetIdx={activeSheetIdx}
-          onSheetsChange={setImportedSheets}
+          onSheetsChange={handleSheetsChange}
           onCloseCellPanel={() => {
             setSidebarMode("step");
             setSelectedCell(null);
@@ -234,6 +642,23 @@ export function SheetManager() {
           shareSheet={shareSheet}
           isLoading={isLoading}
           onToast={toast}
+        />
+      );
+    }
+    if (step === 4 && createdSheet) {
+      return (
+        <CertificateMerge
+          sheets={importedSheets || []}
+          activeSheetIdx={activeSheetIdx}
+          spreadsheetId={createdSheet.spreadsheetId}
+          isLoading={isLoading}
+          onToast={toast}
+          onSheetsChange={handleSheetsChange}
+          copyTemplateDoc={copyTemplateDoc}
+          replaceDocPlaceholders={replaceDocPlaceholders}
+          makeFilePublic={makeFilePublic}
+          writeCellToSheet={writeCellToSheet}
+          sendGmailMessage={sendGmailMessage}
         />
       );
     }
@@ -355,17 +780,35 @@ export function SheetManager() {
             </div>
           </div>
 
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <SpreadsheetGrid
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <SpreadsheetGrid
+                sheets={importedSheets}
+                activeSheetIdx={activeSheetIdx}
+                selectedCell={selectedCell}
+                onSheetsChange={handleSheetsChange}
+                onActiveSheetIdxChange={setActiveSheetIdx}
+                onSelectedCellChange={handleCellSelect}
+                isSyncing={isSyncing}
+                onSyncToGoogle={handleSyncToGoogle}
+                onExportExcel={handleExportExcel}
+              />
+            </div>
+            
+            <TriggersConsole
+              triggers={triggers}
+              logs={logs}
               sheets={importedSheets}
               activeSheetIdx={activeSheetIdx}
-              selectedCell={selectedCell}
-              onSheetsChange={setImportedSheets}
-              onActiveSheetIdxChange={setActiveSheetIdx}
-              onSelectedCellChange={handleCellSelect}
-              isSyncing={isSyncing}
-              onSyncToGoogle={handleSyncToGoogle}
-              onExportExcel={handleExportExcel}
+              dbProvider={dbProvider}
+              dbDetails={dbDetails}
+              isTestingConnection={isTestingConnection}
+              onAddTrigger={handleAddTrigger}
+              onToggleTrigger={handleToggleTrigger}
+              onDeleteTrigger={handleDeleteTrigger}
+              onClearLogs={handleClearLogs}
+              onTestConnection={() => testDbConnection(false)}
+              onSyncDb={handleSyncDb}
             />
           </div>
         </div>
@@ -428,7 +871,7 @@ export function SheetManager() {
                       const workbook = XLSX.read(data, { type: "array" });
                       const parsedSheets = workbook.SheetNames.map((name) => {
                         const sheet = workbook.Sheets[name];
-                        const rawRows = XLSX.utils.sheet_to_json<any[]>(sheet, {
+                        const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
                           header: 1,
                           defval: "",
                         });

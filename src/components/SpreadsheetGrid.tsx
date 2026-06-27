@@ -160,8 +160,10 @@ export function SpreadsheetGrid({
   useEffect(() => {
     if (selectedCell) {
       const cell = gridData[selectedCell.row]?.[selectedCell.col];
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormulaValue(cell?.value ?? "");
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFormulaValue("");
     }
   }, [selectedCell, gridData]);

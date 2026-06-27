@@ -223,8 +223,8 @@ export function HideTabs({
       </div>
 
       <button
-        onClick={handleApply}
-        disabled={isLoading || hiddenIds.size === 0}
+        onClick={hiddenIds.size === 0 ? onDone : handleApply}
+        disabled={isLoading}
         className="btn-primary"
       >
         {isLoading ? (
@@ -236,10 +236,17 @@ export function HideTabs({
           </>
         ) : (
           <>
-            <EyeOff size={16} />
-            {hiddenIds.size > 0
-              ? `Hide ${hiddenIds.size} Tab${hiddenIds.size !== 1 ? "s" : ""}`
-              : "Select tabs to hide"}
+            {hiddenIds.size === 0 ? (
+              <>
+                Continue to Share
+                <ArrowRight size={16} />
+              </>
+            ) : (
+              <>
+                <EyeOff size={16} />
+                {`Hide ${hiddenIds.size} Tab${hiddenIds.size !== 1 ? "s" : ""}`}
+              </>
+            )}
           </>
         )}
       </button>

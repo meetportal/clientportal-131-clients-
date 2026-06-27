@@ -54,7 +54,7 @@ export function CreateSheet({
         const workbook = XLSX.read(data, { type: "array" });
         const parsedSheets = workbook.SheetNames.map((name) => {
           const sheet = workbook.Sheets[name];
-          const rawRows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "" });
+          const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
           const grid = rawRows.map((row) =>
             row.map((val) => ({
               value: String(val ?? ""),
