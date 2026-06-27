@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { RightSidebar } from "@/components/RightSidebar";
 import { CreateSheet } from "@/components/steps/CreateSheet";
 import { HideTabs } from "@/components/steps/HideTabs";
@@ -11,6 +11,12 @@ import { SpreadsheetGrid, ImportedSheet, getColLabel } from "@/components/Spread
 import { CellControlPanel } from "@/components/CellControlPanel";
 import { TriggersConsole, Trigger, LogEntry } from "@/components/TriggersConsole";
 import { CertificateMerge } from "@/components/steps/CertificateMerge";
+import { FilterToolbar, ViewType } from "@/components/FilterToolbar";
+import { useFilteredData, FilterRule, SortRule } from "@/hooks/useFilteredData";
+import { KanbanView } from "@/components/views/KanbanView";
+import { GalleryView } from "@/components/views/GalleryView";
+import { ListView } from "@/components/views/ListView";
+import { CalendarView } from "@/components/views/CalendarView";
 import * as XLSX from "xlsx";
 import {
   FileSpreadsheet,
@@ -77,6 +83,23 @@ export function SheetManager() {
   const [importedFileName, setImportedFileName] = useState<string>("");
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // ── Filter / View state ──────────────────────────────────────────
+  const [viewType, setViewType] = useState<ViewType>("grid");
+  const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
+  const [sortRules, setSortRules] = useState<SortRule[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [kanbanGroupCol, setKanbanGroupCol] = useState(0);
+  const [calendarDateCol, setCalendarDateCol] = useState(0);
+
+  // Filtered data — computed at component level (hooks must be at top level)
+  const activeSheet = importedSheets?.[activeSheetIdx] ?? null;
+  const filteredData = useFilteredData(activeSheet, filterRules, sortRules, searchTerm);
+  const filteredRowIndices = useMemo((): number[] | undefined => {
+    const hasFilter = filterRules.length > 0 || searchTerm.trim() !== "";
+    if (!hasFilter) return undefined;
+    return filteredData.rows.slice(1).map((r) => r.originalIdx);
+  }, [filteredData, filterRules.length, searchTerm]);
 
   const { toasts, dismiss, toast } = useToast();
   const {
@@ -496,6 +519,13 @@ export function SheetManager() {
     setSidebarMode("step");
     setIsSidebarCollapsed(false);
     setIsSyncing(false);
+    // Reset filter state on new import
+    setFilterRules([]);
+    setSortRules([]);
+    setSearchTerm("");
+    setViewType("grid");
+    setKanbanGroupCol(0);
+    setCalendarDateCol(0);
   };
 
   const handleCellSelect = (cell: { row: number; col: number } | null) => {
@@ -668,6 +698,50 @@ export function SheetManager() {
   /* ─── Main content per step ──────────────────────────────────── */
   const mainContent = () => {
     if (importedSheets) {
+      // Render the correct view
+      const renderView = () => {
+        if (viewType === "kanban") {
+          return (
+            <KanbanView
+              filteredData={filteredData}
+              groupColIndex={kanbanGroupCol}
+              onGroupColChange={setKanbanGroupCol}
+            />
+          );
+        }
+        if (viewType === "gallery") {
+          return <GalleryView filteredData={filteredData} primaryColIndex={0} />;
+        }
+        if (viewType === "list") {
+          return <ListView filteredData={filteredData} />;
+        }
+        if (viewType === "calendar") {
+          return (
+            <CalendarView
+              filteredData={filteredData}
+              dateColIndex={calendarDateCol}
+              onDateColChange={setCalendarDateCol}
+            />
+          );
+        }
+        // Default: Grid view
+        return (
+          <SpreadsheetGrid
+            sheets={importedSheets}
+            activeSheetIdx={activeSheetIdx}
+            selectedCell={selectedCell}
+            onSheetsChange={handleSheetsChange}
+            onActiveSheetIdxChange={setActiveSheetIdx}
+            onSelectedCellChange={handleCellSelect}
+            isSyncing={isSyncing}
+            onSyncToGoogle={handleSyncToGoogle}
+            onExportExcel={handleExportExcel}
+            filteredRowIndices={filteredRowIndices}
+            searchTerm={searchTerm}
+          />
+        );
+      };
+
       return (
         <div
           style={{
@@ -675,126 +749,14 @@ export function SheetManager() {
             flexDirection: "column",
             height: "100%",
             width: "100%",
-            gap: "14px",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: "8px",
-            }}
-          >
-            <div>
-              <h2
-                style={{
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  color: "var(--at-text)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <FileSpreadsheet size={16} color="var(--at-accent)" />
-                Local Workbook:{" "}
-                <span style={{ color: "var(--at-accent)" }}>
-                  {importedFileName}
-                </span>
-              </h2>
-              <p
-                style={{
-                  fontSize: "12px",
-                  color: "var(--at-text-soft)",
-                  marginTop: "2px",
-                }}
-              >
-                Double-click cells to edit inline, or single-click to format and
-                edit in the sidebar.
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <button
-                onClick={handleExportExcel}
-                className="tbl-ctrl-btn"
-                style={{
-                  padding: "5px 12px",
-                  fontSize: "12px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <Download size={13} />
-                Export Excel
-              </button>
-              <button
-                onClick={handleSyncToGoogle}
-                disabled={isSyncing}
-                className="btn-primary"
-                style={{
-                  padding: "5px 12px",
-                  width: "auto",
-                  fontSize: "12px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  background: "var(--clr-success)",
-                  boxShadow: "none",
-                }}
-              >
-                {isSyncing ? (
-                  <RefreshCw size={13} className="spin" />
-                ) : (
-                  <CloudUpload size={13} />
-                )}
-                Sync to Google Sheets
-              </button>
-              <button
-                onClick={() => {
-                  const confirmMsg = createdSheet
-                    ? "Are you sure you want to close this spreadsheet? All wizard progress will be reset."
-                    : "Are you sure you want to close this local spreadsheet? Any unsaved edits will be lost.";
-                  if (confirm(confirmMsg)) {
-                    setImportedSheets(null);
-                    setImportedFileName("");
-                    setSelectedCell(null);
-                    setSidebarMode("step");
-                    setIsSyncing(false);
-                    setCreatedSheet(null);
-                    setStep(1);
-                  }
-                }}
-                className="tbl-ctrl-btn"
-                style={{
-                  color: "#b91c1c",
-                  borderColor: "#fca5a5",
-                  fontSize: "12px",
-                  padding: "5px 12px",
-                }}
-              >
-                Close Spreadsheet
-              </button>
-            </div>
-          </div>
-
+          {/* ── View Content ── */}
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
             <div style={{ flex: 1, minHeight: 0 }}>
-              <SpreadsheetGrid
-                sheets={importedSheets}
-                activeSheetIdx={activeSheetIdx}
-                selectedCell={selectedCell}
-                onSheetsChange={handleSheetsChange}
-                onActiveSheetIdxChange={setActiveSheetIdx}
-                onSelectedCellChange={handleCellSelect}
-                isSyncing={isSyncing}
-                onSyncToGoogle={handleSyncToGoogle}
-                onExportExcel={handleExportExcel}
-              />
+              {renderView()}
             </div>
-            
+
             <TriggersConsole
               triggers={triggers}
               logs={logs}
@@ -1142,6 +1104,22 @@ export function SheetManager() {
               <FileSpreadsheet size={15} color="#fff" strokeWidth={2} />
             </div>
             <span className="at-logo-name">Sheet Manager</span>
+
+            {/* Unified File Name Display */}
+            {(importedFileName || sheetName) && (
+              <>
+                <span className="at-logo-separator">/</span>
+                <div 
+                  className="at-logo-file-chip" 
+                  title={createdSheet ? sheetName : (importedFileName || sheetName)}
+                >
+                  <FileSpreadsheet size={11} className="at-logo-file-icon" />
+                  <span className="at-logo-file-name">
+                    {createdSheet ? sheetName : (importedFileName || sheetName)}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Step tabs */}
@@ -1190,6 +1168,53 @@ export function SheetManager() {
 
           {/* Actions zone */}
           <div className="at-actions-zone">
+            {importedSheets && (
+              <>
+                <button
+                  onClick={handleExportExcel}
+                  className="at-topbar-action-btn at-btn-outline"
+                  title="Export to Excel file"
+                >
+                  <Download size={12} />
+                  <span className="at-btn-text">Export Excel</span>
+                </button>
+                <button
+                  onClick={handleSyncToGoogle}
+                  disabled={isSyncing}
+                  className="at-topbar-action-btn at-btn-success"
+                  title="Sync data to Google Sheets"
+                >
+                  {isSyncing ? <RefreshCw size={12} className="spin" /> : <CloudUpload size={12} />}
+                  <span className="at-btn-text">Sync to Google</span>
+                </button>
+                <button
+                  onClick={() => {
+                    const msg = createdSheet
+                      ? "Are you sure you want to close? All wizard progress will be reset."
+                      : "Are you sure you want to close? Any unsaved edits will be lost.";
+                    if (confirm(msg)) {
+                      setImportedSheets(null);
+                      setImportedFileName("");
+                      setSelectedCell(null);
+                      setSidebarMode("step");
+                      setIsSyncing(false);
+                      setCreatedSheet(null);
+                      setStep(1);
+                      setFilterRules([]);
+                      setSortRules([]);
+                      setSearchTerm("");
+                      setViewType("grid");
+                    }
+                  }}
+                  className="at-topbar-action-btn at-btn-danger"
+                  title="Close spreadsheet and reset wizard"
+                >
+                  <span className="at-btn-text">Close</span>
+                </button>
+                <div className="at-actions-divider" />
+              </>
+            )}
+
             <button
               className={`at-cta-btn${sidebarOpen && !isSidebarCollapsed ? " at-cta-btn--secondary" : ""}`}
               style={{ width: "auto", fontSize: 12, padding: "5px 12px" }}
@@ -1219,25 +1244,26 @@ export function SheetManager() {
           </div>
         </header>
 
-        {/* ── Subbar ──────────────────────────────────────────────── */}
-        {createdSheet && (
-          <div className="at-subbar">
-            <span className="at-subbar-label">Working on</span>
-            <div className="at-subbar-divider" />
-            <span className="at-subbar-chip">
-              <FileSpreadsheet size={10} />
-              {sheetName}
-            </span>
-            <div style={{ flex: 1 }} />
-            <span
-              style={{
-                fontSize: 11,
-                color: "var(--at-text-soft)",
-                fontWeight: 500,
-              }}
-            >
-              Step {step} of {STEPS.length}
-            </span>
+        {/* ── Filter / View Toolbar: sticky, shown only when spreadsheet is loaded ── */}
+        {importedSheets && activeSheet && (
+          <div className="at-filter-bar">
+            <FilterToolbar
+              sheet={activeSheet}
+              viewType={viewType}
+              filterRules={filterRules}
+              sortRules={sortRules}
+              searchTerm={searchTerm}
+              filteredCount={filteredData.filteredCount}
+              totalRows={filteredData.totalRows}
+              onViewChange={setViewType}
+              onFilterRulesChange={setFilterRules}
+              onSortRulesChange={setSortRules}
+              onSearchChange={setSearchTerm}
+              kanbanGroupCol={kanbanGroupCol}
+              onKanbanGroupColChange={setKanbanGroupCol}
+              calendarDateCol={calendarDateCol}
+              onCalendarDateColChange={setCalendarDateCol}
+            />
           </div>
         )}
 

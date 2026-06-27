@@ -56,6 +56,10 @@ interface SpreadsheetGridProps {
   onSyncToGoogle: () => void;
   onExportExcel: () => void;
   isSyncing?: boolean;
+  /** When provided, only rows whose original index are in this array are rendered */
+  filteredRowIndices?: number[];
+  /** Term to highlight in cells */
+  searchTerm?: string;
 }
 
 // Convert 0 -> A, 1 -> B, etc.
@@ -79,7 +83,11 @@ export function SpreadsheetGrid({
   onSyncToGoogle,
   onExportExcel,
   isSyncing = false,
+  filteredRowIndices: filteredRowIndicesArr,
+  searchTerm = "",
 }: SpreadsheetGridProps) {
+  // Convert to Set for O(1) lookup during rendering
+  const filteredRowIndices = filteredRowIndicesArr ? new Set(filteredRowIndicesArr) : undefined;
   const currentSheet = sheets[activeSheetIdx] || {
     name: "Sheet 1",
     data: [[]],
@@ -597,6 +605,9 @@ export function SpreadsheetGrid({
           <tbody>
             {gridData.map((row, rowIdx) => {
               if (isRowHidden(rowIdx)) return null;
+              // When a filter is active, only render rows that pass the filter
+              // Row 0 (header) always renders
+              if (filteredRowIndices && rowIdx > 0 && !filteredRowIndices.has(rowIdx)) return null;
               return (
                 <tr key={rowIdx}>
                   {/* Row Header */}
@@ -634,6 +645,10 @@ export function SpreadsheetGrid({
                     const { bold, italic, underline, align, color, bg } =
                       cell.style || {};
 
+                    // Determine search highlight
+                    const term = searchTerm.trim().toLowerCase();
+                    const isSearchMatch = term !== "" && cell.value.toLowerCase().includes(term);
+
                     return (
                       <td
                         key={colIdx}
@@ -648,6 +663,8 @@ export function SpreadsheetGrid({
                           borderBottom: "1px solid var(--at-border-light)",
                           background: isSelected
                             ? "#f0f7ff"
+                            : isSearchMatch
+                            ? "#fefce8"
                             : bg || "var(--at-surface)",
                           color: color || "var(--at-text)",
                           fontWeight: bold ? "bold" : "normal",
@@ -664,8 +681,10 @@ export function SpreadsheetGrid({
                           userSelect: "none",
                           outline: isSelected
                             ? "2px solid var(--at-accent)"
+                            : isSearchMatch
+                            ? "1px solid #facc15"
                             : "none",
-                          outlineOffset: "-2px",
+                          outlineOffset: "-1px",
                         }}
                       >
                         {isEditing ? (
