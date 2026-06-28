@@ -18,7 +18,7 @@ async function ensureScratchDir() {
 // In-memory fallback if file system fails or in production without env variables
 let inMemoryDb: unknown = null;
 
-async function loadData() {
+export async function loadData() {
   // 1. Try Upstash Redis / Vercel KV if config exists
   const kvUrl = process.env.KV_REST_API_URL; 
   const kvToken = process.env.KV_REST_API_TOKEN;
@@ -53,7 +53,20 @@ async function loadData() {
   return inMemoryDb;
 }
 
-async function saveData(state: unknown) {
+export async function saveData(state: unknown) {
+  // Load existing data to perform a shallow merge and prevent wiping other fields
+  let mergedState = state;
+  if (state && typeof state === "object" && !Array.isArray(state)) {
+    try {
+      const existing = await loadData();
+      if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+        mergedState = { ...existing, ...state };
+      }
+    } catch (e) {
+      console.warn("Failed to load existing data for merge, proceeding with full overwrite", e);
+    }
+  }
+
   // 1. Try Upstash Redis / Vercel KV
   const kvUrl = process.env.KV_REST_API_URL;
   const kvToken = process.env.KV_REST_API_TOKEN;
@@ -65,7 +78,7 @@ async function saveData(state: unknown) {
           Authorization: `Bearer ${kvToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(["SET", "sheet_db_state", JSON.stringify(state)]),
+        body: JSON.stringify(["SET", "sheet_db_state", JSON.stringify(mergedState)]),
       });
       if (res.ok) {
         return { success: true, provider: "upstash_redis" };
@@ -78,16 +91,17 @@ async function saveData(state: unknown) {
   // 2. Try Local File Storage
   try {
     await ensureScratchDir();
-    await fs.writeFile(DB_FILE, JSON.stringify(state, null, 2), "utf-8");
+    await fs.writeFile(DB_FILE, JSON.stringify(mergedState, null, 2), "utf-8");
     return { success: true, provider: "local_json_file" };
   } catch (err) {
     console.error("Failed to save to local file:", err);
   }
 
   // 3. Fallback to In-Memory
-  inMemoryDb = state;
+  inMemoryDb = mergedState;
   return { success: true, provider: "in_memory" };
 }
+
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -122,7 +136,7 @@ export async function GET(req: NextRequest) {
   }
 
   const data = await loadData();
-  return NextResponse.json(data || { sheets: [], triggers: [], logs: [] });
+  return NextResponse.json(data || { sheets: [], triggers: [], logs: [], printTemplates: [] });
 }
 
 export async function POST(req: NextRequest) {

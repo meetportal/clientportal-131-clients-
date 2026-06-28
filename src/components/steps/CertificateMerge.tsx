@@ -11,6 +11,8 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { ImportedSheet, getColLabel } from "../SpreadsheetGrid";
+import { generateTrackingToken } from "@/types/tracking";
+import { buildTrackingUrl } from "@/utils/appUrl";
 
 interface CertificateMergeProps {
   sheets: ImportedSheet[];
@@ -180,7 +182,36 @@ export function CertificateMerge({
         updateStatus("sharing", "Configuring sharing links in Drive...");
         const sharingLink = await makeFilePublic(copiedDocId);
 
-        // 4. Write link back to Google Sheet
+        // 3.5 Register tracking link — wraps the Drive URL in an opaque redirect
+        //     so we can record when the recipient actually opens their certificate.
+        //     The email will contain the tracking URL; the real Drive URL stays server-side.
+        let emailLink = sharingLink; // fallback: direct link if tracking registration fails
+        try {
+          const token = generateTrackingToken();
+          const trackRes = await fetch("/api/track", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token,
+              recipientName: nameVal,
+              recipientEmail: emailTrimmed,
+              rowIndex: rowIdx,
+              driveUrl: sharingLink,
+              sentAt: new Date().toISOString(),
+            }),
+          });
+          if (trackRes.ok) {
+            emailLink = buildTrackingUrl(token);
+          } else {
+            console.warn("[CertificateMerge] Tracking registration failed — using raw drive link as fallback");
+          }
+        } catch (trackErr) {
+          // Tracking failure must never block email delivery
+          console.warn("[CertificateMerge] Tracking error (non-fatal):", trackErr);
+        }
+
+        // 4. Write link back to Google Sheet (uses raw Drive link, not tracking URL)
+        //    The sheet link should always be the direct Drive URL for admin access.
         updateStatus("writing", "Writing sharing link to spreadsheet...");
         const colLetter = getColLabel(targetCol);
         const cellRange = `'${currentSheet.name}'!${colLetter}${currentLog.row}`;
@@ -205,13 +236,14 @@ export function CertificateMerge({
           data: newSheetData,
         };
 
-        // 5. Send Loop Mail
+        // 5. Send email — use the tracking URL (emailLink) in the body
+        //    If tracking registration failed above, emailLink === sharingLink (raw Drive URL).
         updateStatus("emailing", "Sending notification email...");
         const personalizedBody = emailBody
           .replace(/{Name}/g, nameVal)
           .replace(/{Rank}/g, rankVal)
           .replace(/{Class}/g, classVal)
-          .replace(/{Drive link}/g, sharingLink);
+          .replace(/{Drive link}/g, emailLink); // ← tracking URL here
         
         await sendGmailMessage(emailTrimmed, emailSubject, personalizedBody);
 

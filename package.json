@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "share": "npx localtunnel --port 3000"
   },
   "dependencies": {
     "lucide-react": "^1.21.0",

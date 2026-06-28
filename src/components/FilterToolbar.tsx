@@ -15,6 +15,7 @@ import {
   ChevronDown,
   Trash2,
   SlidersHorizontal,
+  Printer,
 } from "lucide-react";
 import {
   FilterRule,
@@ -25,7 +26,7 @@ import {
 } from "@/hooks/useFilteredData";
 import { ImportedSheet } from "@/components/SpreadsheetGrid";
 
-export type ViewType = "grid" | "kanban" | "gallery" | "list" | "calendar";
+export type ViewType = "grid" | "kanban" | "gallery" | "list" | "calendar" | "print";
 
 export const VIEW_OPTIONS: { id: ViewType; label: string; icon: React.ReactNode }[] = [
   { id: "grid",     label: "Grid",     icon: <LayoutGrid size={14} /> },
@@ -33,6 +34,7 @@ export const VIEW_OPTIONS: { id: ViewType; label: string; icon: React.ReactNode 
   { id: "gallery",  label: "Gallery",  icon: <Image size={14} /> },
   { id: "list",     label: "List",     icon: <List size={14} /> },
   { id: "calendar", label: "Calendar", icon: <Calendar size={14} /> },
+  { id: "print",    label: "Print",    icon: <Printer size={14} /> },
 ];
 
 // ─── Operator categories for the UI ──────────────────────────────────────────
@@ -391,6 +393,9 @@ export function FilterToolbar({
   const openSort = () => { setShowSortPanel(true); setShowFilterPanel(false); setShowViewDropdown(false); };
   const openView = () => { setShowViewDropdown(true); setShowFilterPanel(false); setShowSortPanel(false); };
 
+  // In print mode, filter/sort/search controls are irrelevant — hide them
+  const isPrintMode = viewType === "print";
+
   return (
     <div className="filter-toolbar">
       <div className="filter-toolbar-inner">
@@ -415,79 +420,90 @@ export function FilterToolbar({
           )}
         </div>
 
-        <div className="filter-toolbar-divider" />
+        {/* Print mode notice — hides all filter/sort/search controls */}
+        {isPrintMode && (
+          <span style={{ fontSize: 11.5, color: "var(--at-text-muted)", marginLeft: 10, fontStyle: "italic" }}>
+            Print mode — use the template editor to define what gets printed
+          </span>
+        )}
 
-        {/* ── Center: Filter + Sort ─────────────── */}
-        <div className="filter-toolbar-section" style={{ position: "relative", display: "flex", gap: 4 }}>
-          {/* Filter split button */}
-          <div className={`filter-btn-group${hasFilters ? " filter-btn-group--split" : ""}`}>
-            <button
-              className={`filter-toolbar-btn${hasFilters ? " filter-toolbar-btn--active" : ""}${showFilterPanel ? " filter-toolbar-btn--open" : ""}`}
-              onClick={() => (showFilterPanel ? setShowFilterPanel(false) : openFilter())}
-            >
-              <Filter size={13} />
-              <span>Filter</span>
-              {hasFilters && <span className="filter-count-badge">{filterRules.length}</span>}
-            </button>
-            {hasFilters && (
-              <button
-                className="filter-toolbar-btn-clear"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onFilterRulesChange([]);
-                }}
-                title="Clear all filters"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
+        {!isPrintMode && (
+          <>
+            <div className="filter-toolbar-divider" />
 
-          {/* Sort split button */}
-          <div className={`sort-btn-group${hasSorts ? " sort-btn-group--split" : ""}`}>
-            <button
-              className={`filter-toolbar-btn${hasSorts ? " filter-toolbar-btn--active" : ""}${showSortPanel ? " filter-toolbar-btn--open" : ""}`}
-              onClick={() => (showSortPanel ? setShowSortPanel(false) : openSort())}
-            >
-              <ArrowUpDown size={13} />
-              <span>Sort</span>
-              {hasSorts && <span className="filter-count-badge">{sortRules.length}</span>}
-            </button>
-            {hasSorts && (
-              <button
-                className="sort-toolbar-btn-clear"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSortRulesChange([]);
-                }}
-                title="Clear sorts"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
+            {/* ── Center: Filter + Sort ─────────────── */}
+            <div className="filter-toolbar-section" style={{ position: "relative", display: "flex", gap: 4 }}>
+              {/* Filter split button */}
+              <div className={`filter-btn-group${hasFilters ? " filter-btn-group--split" : ""}`}>
+                <button
+                  className={`filter-toolbar-btn${hasFilters ? " filter-toolbar-btn--active" : ""}${showFilterPanel ? " filter-toolbar-btn--open" : ""}`}
+                  onClick={() => (showFilterPanel ? setShowFilterPanel(false) : openFilter())}
+                >
+                  <Filter size={13} />
+                  <span>Filter</span>
+                  {hasFilters && <span className="filter-count-badge">{filterRules.length}</span>}
+                </button>
+                {hasFilters && (
+                  <button
+                    className="filter-toolbar-btn-clear"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFilterRulesChange([]);
+                    }}
+                    title="Clear all filters"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
 
-          {/* Panels */}
-          {showFilterPanel && sheet && (
-            <FilterPanel
-              sheet={sheet}
-              rules={filterRules}
-              onChange={onFilterRulesChange}
-              onClose={() => setShowFilterPanel(false)}
-            />
-          )}
-          {showSortPanel && sheet && (
-            <SortPanel
-              sheet={sheet}
-              rules={sortRules}
-              onChange={onSortRulesChange}
-              onClose={() => setShowSortPanel(false)}
-            />
-          )}
-        </div>
+              {/* Sort split button */}
+              <div className={`sort-btn-group${hasSorts ? " sort-btn-group--split" : ""}`}>
+                <button
+                  className={`filter-toolbar-btn${hasSorts ? " filter-toolbar-btn--active" : ""}${showSortPanel ? " filter-toolbar-btn--open" : ""}`}
+                  onClick={() => (showSortPanel ? setShowSortPanel(false) : openSort())}
+                >
+                  <ArrowUpDown size={13} />
+                  <span>Sort</span>
+                  {hasSorts && <span className="filter-count-badge">{sortRules.length}</span>}
+                </button>
+                {hasSorts && (
+                  <button
+                    className="sort-toolbar-btn-clear"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSortRulesChange([]);
+                    }}
+                    title="Clear sorts"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
 
-        {/* View-specific grouping controls */}
-        {viewType === "kanban" && onKanbanGroupColChange !== undefined && kanbanGroupCol !== undefined && (
+              {/* Panels */}
+              {showFilterPanel && sheet && (
+                <FilterPanel
+                  sheet={sheet}
+                  rules={filterRules}
+                  onChange={onFilterRulesChange}
+                  onClose={() => setShowFilterPanel(false)}
+                />
+              )}
+              {showSortPanel && sheet && (
+                <SortPanel
+                  sheet={sheet}
+                  rules={sortRules}
+                  onChange={onSortRulesChange}
+                  onClose={() => setShowSortPanel(false)}
+                />
+              )}
+            </div>
+          </>
+        )}
+
+        {/* View-specific grouping controls — hidden in print mode */}
+        {!isPrintMode && viewType === "kanban" && onKanbanGroupColChange !== undefined && kanbanGroupCol !== undefined && (
           <>
             <div className="filter-toolbar-divider" />
             <div className="filter-toolbar-section">
@@ -505,7 +521,7 @@ export function FilterToolbar({
           </>
         )}
 
-        {viewType === "calendar" && onCalendarDateColChange !== undefined && calendarDateCol !== undefined && (
+        {!isPrintMode && viewType === "calendar" && onCalendarDateColChange !== undefined && calendarDateCol !== undefined && (
           <>
             <div className="filter-toolbar-divider" />
             <div className="filter-toolbar-section">
@@ -523,7 +539,7 @@ export function FilterToolbar({
           </>
         )}
 
-        {viewType === "gallery" && onGalleryTitleColChange !== undefined && galleryTitleCol !== undefined && (
+        {!isPrintMode && viewType === "gallery" && onGalleryTitleColChange !== undefined && galleryTitleCol !== undefined && (
           <>
             <div className="filter-toolbar-divider" />
             <div className="filter-toolbar-section">
@@ -541,43 +557,46 @@ export function FilterToolbar({
           </>
         )}
 
-        <div className="filter-toolbar-divider" />
+        {!isPrintMode && <div className="filter-toolbar-divider" />}
 
-        {/* ── Right: Search + row count ─────────── */}
-        <div className="filter-toolbar-section filter-toolbar-section--right">
-          <div className={`filter-search-wrap${searchFocused ? " filter-search-wrap--focused" : ""}`}>
-            <Search size={13} className="filter-search-icon" />
-            <input
-              type="text"
-              className="filter-search-input"
-              placeholder="Search all columns…"
-              value={searchTerm}
-              onChange={(e) => onSearchChange(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-            />
-            {searchTerm && (
-              <button className="filter-search-clear" onClick={() => onSearchChange("")}>
-                <X size={12} />
-              </button>
-            )}
+        {/* ── Right: Search + row count (hidden in print mode) ─────── */}
+        {!isPrintMode && (
+          <div className="filter-toolbar-section filter-toolbar-section--right">
+            <div className={`filter-search-wrap${searchFocused ? " filter-search-wrap--focused" : ""}`}>
+              <Search size={13} className="filter-search-icon" />
+              <input
+                type="text"
+                className="filter-search-input"
+                placeholder="Search all columns…"
+                value={searchTerm}
+                onChange={(e) => onSearchChange(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
+              />
+              {searchTerm && (
+                <button className="filter-search-clear" onClick={() => onSearchChange("")}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            {/* Editor hint text */}
+            <span className="filter-toolbar-hint">
+              Double-click cells to edit · single-click to format
+            </span>
+
+            {/* Row count */}
+            <span className="filter-row-count">
+              {isFiltering ? (
+                <><strong>{filteredCount}</strong> of {totalRows} rows</>
+              ) : (
+                <><strong>{totalRows}</strong> rows</>
+              )}
+            </span>
           </div>
-
-          {/* Editor hint text */}
-          <span className="filter-toolbar-hint">
-            Double-click cells to edit · single-click to format
-          </span>
-
-          {/* Row count */}
-          <span className="filter-row-count">
-            {isFiltering ? (
-              <><strong>{filteredCount}</strong> of {totalRows} rows</>
-            ) : (
-              <><strong>{totalRows}</strong> rows</>
-            )}
-          </span>
-        </div>
+        )}
       </div>
+
 
       {/* ── Active filter chips row ──────────────── */}
       {(hasFilters || hasSorts) && (

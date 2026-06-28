@@ -17,6 +17,7 @@ import { KanbanView } from "@/components/views/KanbanView";
 import { GalleryView } from "@/components/views/GalleryView";
 import { ListView } from "@/components/views/ListView";
 import { CalendarView } from "@/components/views/CalendarView";
+import { PrintView } from "@/components/views/PrintView";
 import * as XLSX from "xlsx";
 import {
   FileSpreadsheet,
@@ -97,10 +98,10 @@ export function SheetManager() {
   const activeSheet = importedSheets?.[activeSheetIdx] ?? null;
   const filteredData = useFilteredData(activeSheet, filterRules, sortRules, searchTerm);
   const filteredRowIndices = useMemo((): number[] | undefined => {
-    const hasFilter = filterRules.length > 0 || searchTerm.trim() !== "";
-    if (!hasFilter) return undefined;
+    const hasFilterOrSort = filterRules.length > 0 || sortRules.length > 0 || searchTerm.trim() !== "";
+    if (!hasFilterOrSort) return undefined;
     return filteredData.rows.slice(1).map((r) => r.originalIdx);
-  }, [filteredData, filterRules.length, searchTerm]);
+  }, [filteredData, filterRules.length, sortRules.length, searchTerm]);
 
   const { toasts, dismiss, toast } = useToast();
   const {
@@ -221,6 +222,81 @@ export function SheetManager() {
     loadDbState();
   }, []);
 
+  const handleUpdateSheetApiSettings = (sheetIdx: number, settings: any) => {
+    if (!importedSheets) return;
+    const nextSheets = [...importedSheets];
+    nextSheets[sheetIdx] = {
+      ...nextSheets[sheetIdx],
+      apiSettings: settings,
+    };
+    setImportedSheets(nextSheets);
+    saveDbState(nextSheets, triggers, logs);
+  };
+
+  const handleUpdateSheetWebhookSettings = (sheetIdx: number, settings: any) => {
+    if (!importedSheets) return;
+    const nextSheets = [...importedSheets];
+    nextSheets[sheetIdx] = {
+      ...nextSheets[sheetIdx],
+      webhookSettings: settings,
+    };
+    setImportedSheets(nextSheets);
+    saveDbState(nextSheets, triggers, logs);
+  };
+
+  const triggerWebhook = async (
+    sheet: ImportedSheet,
+    eventType: "cell_changed" | "row_added",
+    changeData: any,
+    currentSheetsList: ImportedSheet[] | null
+  ) => {
+    const settings = sheet.webhookSettings;
+    if (!settings || !settings.enabled || !settings.url) return;
+
+    try {
+      const payload = {
+        event: eventType,
+        sheetName: sheet.name,
+        timestamp: new Date().toISOString(),
+        data: changeData,
+      };
+
+      const res = await fetch("/api/webhooks/dispatch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          webhookUrl: settings.url,
+          payload,
+        }),
+      });
+
+      const logEntry: LogEntry = {
+        id: `log-wh-res-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        eventType: "system",
+        sheetName: sheet.name,
+        details: `[Webhook] Outbound ${eventType} event sent to ${settings.url}. Status: ${res.status} ${res.statusText}`,
+        status: res.ok ? "success" : "warning",
+      };
+
+      setLogs((prev) => [logEntry, ...prev]);
+      saveDbState(currentSheetsList, triggers, [logEntry, ...logs]);
+    } catch (err) {
+      const errorLog: LogEntry = {
+        id: `log-wh-err-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString(),
+        eventType: "system",
+        sheetName: sheet.name,
+        details: `[Webhook Error] Failed to send to ${settings.url}. Error: ${err instanceof Error ? err.message : String(err)}`,
+        status: "warning",
+      };
+      setLogs((prev) => [errorLog, ...prev]);
+      saveDbState(currentSheetsList, triggers, [errorLog, ...logs]);
+    }
+  };
+
   // Triggers Interceptor Logic
   const handleSheetsChange = (nextSheets: ImportedSheet[] | null) => {
     if (!nextSheets) {
@@ -331,6 +407,11 @@ export function SheetManager() {
           }
           newLogs = [runLog, ...newLogs];
         });
+
+        triggerWebhook(activeSheet, "row_added", {
+          rowIndex: detectedAddedRow,
+          details: `Row ${detectedAddedRow + 1} was added.`
+        }, finalSheets);
       }
 
       // 2. Check Cell Changed Trigger
@@ -420,6 +501,14 @@ export function SheetManager() {
               }
               newLogs = [runLog, ...newLogs];
             });
+
+            triggerWebhook(activeSheet, "cell_changed", {
+              row: rIdx,
+              col: cIdx,
+              prevVal,
+              newVal,
+              cellRef
+            }, finalSheets);
           }
         }
       }
@@ -731,6 +820,14 @@ export function SheetManager() {
             />
           );
         }
+        if (viewType === "print") {
+          return (
+            <PrintView
+              activeSheet={activeSheet}
+              filteredRowIndices={filteredRowIndices}
+            />
+          );
+        }
         // Default: Grid view
         return (
           <SpreadsheetGrid
@@ -778,6 +875,8 @@ export function SheetManager() {
               onClearLogs={handleClearLogs}
               onTestConnection={() => testDbConnection(false)}
               onSyncDb={handleSyncDb}
+              onUpdateSheetApiSettings={handleUpdateSheetApiSettings}
+              onUpdateSheetWebhookSettings={handleUpdateSheetWebhookSettings}
             />
           </div>
         </div>

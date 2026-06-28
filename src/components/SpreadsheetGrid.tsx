@@ -39,11 +39,24 @@ export interface ColumnMetadata {
   hidden?: boolean;
 }
 
+export interface SheetWebhookSettings {
+  enabled: boolean;
+  url: string;
+}
+
+export interface SheetApiSettings {
+  enabled: boolean;
+  isPublic: boolean;
+  apiKey?: string;
+}
+
 export interface ImportedSheet {
   name: string;
   data: CellData[][];
   cols?: ColumnMetadata[];
   rows?: RowMetadata[];
+  apiSettings?: SheetApiSettings;
+  webhookSettings?: SheetWebhookSettings;
 }
 
 interface SpreadsheetGridProps {
@@ -86,8 +99,6 @@ export function SpreadsheetGrid({
   filteredRowIndices: filteredRowIndicesArr,
   searchTerm = "",
 }: SpreadsheetGridProps) {
-  // Convert to Set for O(1) lookup during rendering
-  const filteredRowIndices = filteredRowIndicesArr ? new Set(filteredRowIndicesArr) : undefined;
   const currentSheet = sheets[activeSheetIdx] || {
     name: "Sheet 1",
     data: [[]],
@@ -492,8 +503,6 @@ export function SpreadsheetGrid({
         overflow: "hidden",
       }}
     >
-
-
       {/* ── Formula Bar ─────────────────────────────────────────── */}
       <div
         style={{
@@ -626,120 +635,131 @@ export function SpreadsheetGrid({
             </tr>
           </thead>
           <tbody>
-            {gridData.map((row, rowIdx) => {
-              if (isRowHidden(rowIdx)) return null;
-              // When a filter is active, only render rows that pass the filter
-              // Row 0 (header) always renders
-              if (filteredRowIndices && rowIdx > 0 && !filteredRowIndices.has(rowIdx)) return null;
-              return (
-                <tr key={rowIdx}>
-                  {/* Row Header */}
-                  <td
-                    onClick={() => onSelectedCellChange({ row: rowIdx, col: -1 })}
-                    style={{
-                      position: "sticky",
-                      left: 0,
-                      zIndex: 10,
-                      width: "40px",
-                      height: "22px",
-                      background: selectedCell?.row === rowIdx ? "#e2e8f0" : "#f4f4f2",
-                      borderRight: "1px solid var(--at-border)",
-                      borderBottom: "1px solid var(--at-border-light)",
-                      fontSize: "10.5px",
-                      fontWeight: selectedCell?.row === rowIdx ? 700 : 600,
-                      color: selectedCell?.row === rowIdx ? "var(--at-accent)" : "var(--at-text-soft)",
-                      textAlign: "center",
-                      verticalAlign: "middle",
-                      userSelect: "none",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {rowIdx + 1}
-                  </td>
-                  {/* Cells */}
-                  {row.map((cell, colIdx) => {
-                    if (isColHidden(colIdx)) return null;
-                    const isSelected =
-                      selectedCell?.row === rowIdx &&
-                      (selectedCell?.col === colIdx || selectedCell?.col === -1);
-                    const isEditing =
-                      inlineEditingCell?.row === rowIdx &&
-                      inlineEditingCell?.col === colIdx;
+            {(() => {
+              // Build the list of row indices we want to render, in the correct order.
+              // Row 0 (user's header) is always rendered first.
+              const rowIndices = [0];
+              if (filteredRowIndicesArr) {
+                rowIndices.push(...filteredRowIndicesArr);
+              } else {
+                for (let i = 1; i < gridData.length; i++) {
+                  rowIndices.push(i);
+                }
+              }
 
-                    // Render cell formatting
-                    const { bold, italic, underline, align, color, bg } =
-                      cell.style || {};
+              return rowIndices.map((rowIdx) => {
+                const row = gridData[rowIdx];
+                if (!row || isRowHidden(rowIdx)) return null;
+                return (
+                  <tr key={rowIdx}>
+                    {/* Row Header */}
+                    <td
+                      onClick={() => onSelectedCellChange({ row: rowIdx, col: -1 })}
+                      style={{
+                        position: "sticky",
+                        left: 0,
+                        zIndex: 10,
+                        width: "40px",
+                        height: "22px",
+                        background: selectedCell?.row === rowIdx ? "#e2e8f0" : "#f4f4f2",
+                        borderRight: "1px solid var(--at-border)",
+                        borderBottom: "1px solid var(--at-border-light)",
+                        fontSize: "10.5px",
+                        fontWeight: selectedCell?.row === rowIdx ? 700 : 600,
+                        color: selectedCell?.row === rowIdx ? "var(--at-accent)" : "var(--at-text-soft)",
+                        textAlign: "center",
+                        verticalAlign: "middle",
+                        userSelect: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {rowIdx + 1}
+                    </td>
+                    {/* Cells */}
+                    {row.map((cell, colIdx) => {
+                      if (isColHidden(colIdx)) return null;
+                      const isSelected =
+                        selectedCell?.row === rowIdx &&
+                        (selectedCell?.col === colIdx || selectedCell?.col === -1);
+                      const isEditing =
+                        inlineEditingCell?.row === rowIdx &&
+                        inlineEditingCell?.col === colIdx;
 
-                    // Determine search highlight
-                    const term = searchTerm.trim().toLowerCase();
-                    const isSearchMatch = term !== "" && cell.value.toLowerCase().includes(term);
+                      // Render cell formatting
+                      const { bold, italic, underline, align, color, bg } =
+                        cell.style || {};
 
-                    return (
-                      <td
-                        key={colIdx}
-                        onClick={() => handleCellClick(rowIdx, colIdx)}
-                        onDoubleClick={() =>
-                          handleCellDoubleClick(rowIdx, colIdx)
-                        }
-                        style={{
-                          width: "120px",
-                          height: "22px",
-                          borderRight: "1px solid var(--at-border-light)",
-                          borderBottom: "1px solid var(--at-border-light)",
-                          background: isSelected
-                            ? "#f0f7ff"
-                            : isSearchMatch
-                            ? "#fefce8"
-                            : bg || "var(--at-surface)",
-                          color: color || "var(--at-text)",
-                          fontWeight: bold ? "bold" : "normal",
-                          fontStyle: italic ? "italic" : "normal",
-                          textDecoration: underline ? "underline" : "none",
-                          textAlign: align || "left",
-                          fontSize: "12.5px",
-                          padding: "0 6px",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          verticalAlign: "middle",
-                          cursor: "cell",
-                          userSelect: "none",
-                          outline: isSelected && selectedCell?.col !== -1
-                            ? "2px solid var(--at-accent)"
-                            : isSearchMatch
-                            ? "1px solid #facc15"
-                            : "none",
-                          outlineOffset: "-1px",
-                        }}
-                      >
-                        {isEditing ? (
-                          <input
-                            ref={inlineInputRef}
-                            type="text"
-                            value={inlineEditValue}
-                            onChange={(e) => setInlineEditValue(e.target.value)}
-                            onBlur={handleInlineEditBlur}
-                            onKeyDown={handleInlineEditKeyDown}
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              border: "none",
-                              outline: "none",
-                              background: "transparent",
-                              fontSize: "12.5px",
-                              fontFamily: "var(--font-body)",
-                              padding: 0,
-                            }}
-                          />
-                        ) : (
-                          cell.value
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
+                      // Determine search highlight
+                      const term = searchTerm.trim().toLowerCase();
+                      const isSearchMatch = term !== "" && cell.value.toLowerCase().includes(term);
+
+                      return (
+                        <td
+                          key={colIdx}
+                          onClick={() => handleCellClick(rowIdx, colIdx)}
+                          onDoubleClick={() =>
+                            handleCellDoubleClick(rowIdx, colIdx)
+                          }
+                          style={{
+                            width: "120px",
+                            height: "22px",
+                            borderRight: "1px solid var(--at-border-light)",
+                            borderBottom: "1px solid var(--at-border-light)",
+                            background: isSelected
+                              ? "#f0f7ff"
+                              : isSearchMatch
+                              ? "#fefce8"
+                              : bg || "var(--at-surface)",
+                            color: color || "var(--at-text)",
+                            fontWeight: bold ? "bold" : "normal",
+                            fontStyle: italic ? "italic" : "normal",
+                            textDecoration: underline ? "underline" : "none",
+                            textAlign: align || "left",
+                            fontSize: "12.5px",
+                            padding: "0 6px",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            verticalAlign: "middle",
+                            cursor: "cell",
+                            userSelect: "none",
+                            outline: isSelected && selectedCell?.col !== -1
+                              ? "2px solid var(--at-accent)"
+                              : isSearchMatch
+                              ? "1px solid #facc15"
+                              : "none",
+                            outlineOffset: "-1px",
+                          }}
+                        >
+                          {isEditing ? (
+                            <input
+                              ref={inlineInputRef}
+                              type="text"
+                              value={inlineEditValue}
+                              onChange={(e) => setInlineEditValue(e.target.value)}
+                              onBlur={handleInlineEditBlur}
+                              onKeyDown={handleInlineEditKeyDown}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                border: "none",
+                                outline: "none",
+                                background: "transparent",
+                                fontSize: "12.5px",
+                                fontFamily: "var(--font-body)",
+                                padding: 0,
+                              }}
+                            />
+                          ) : (
+                            cell.value
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              });
+            })()}
           </tbody>
         </table>
       </div>
