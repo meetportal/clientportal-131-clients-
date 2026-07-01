@@ -669,11 +669,11 @@ export function SpreadsheetGrid({
                 return (
                   <tr
                     key={rowIdx}
-                    onMouseEnter={() => setHoveredRow(rowIdx)}
-                    onMouseLeave={() => setHoveredRow(null)}
                   >
                     {/* Row Header */}
                     <td
+                      onMouseEnter={() => setHoveredRow(rowIdx)}
+                      onMouseLeave={() => setHoveredRow(null)}
                       onClick={() => onSelectedCellChange({ row: rowIdx, col: -1 })}
                       style={{
                         position: "sticky",
